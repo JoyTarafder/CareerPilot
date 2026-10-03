@@ -1,0 +1,313 @@
+# Project Brain
+
+> Living project memory. Keep it accurate after every code change.
+
+## Project summary
+- **Name:** CareerPilot
+- **Purpose:** AI-assisted career platform for creating ATS-safe resumes, estimating CV-to-job compatibility scores deterministically with evidence, preparing for text interviews, and tracking job applications.
+- **Status:** Phase 7 Completed (Product Maturity: English/Bangla Internationalization, Candidate Notification Preferences, Reminder Dispatch Engine, Advanced Admin Permissions, and Temporary Support-Access Approval). Ready for production deployment and ongoing operations.
+- **Target Audience:** Students, fresh graduates, internship seekers, and early-career professionals.
+
+## Architecture and data flow
+- **Architecture Style:** Modular monolith with separately deployed applications organized into top-level `frontend/` (`frontend/web`, `frontend/admin`), `backend/` (`backend/api`, `backend/worker`), and shared `packages/` (`contracts`, `design-system`, `scoring`, `config`).
+- **Frontend Stack:** Next.js App Router, TypeScript, Tailwind CSS, Framer Motion.
+- **Backend Stack:** Node.js, Express, TypeScript, Prisma ORM, PostgreSQL.
+- **Job Processing:** Dedicated worker process; PostgreSQL-backed queue table for MVP (evaluating BullMQ/Redis under measured concurrency).
+- **AI Integration:** Google Gemini Developer API via `@google/genai` SDK (`gemini-2.5-flash`). Gemini extracts schema-constrained facts from PII-redacted job descriptions; pure deterministic TypeScript scoring engine (`@careerpilot/scoring`) computes scores, categories, evidence map, and missing requirements. AI Writing Studio uses structured generation with hallucination guardrails and rule-based fallbacks. Mock Interview Studio provides grounded questions, bounded follow-ups, and STAR structured evaluation without emotional inference.
+- **Document Processing:** Network-isolated PDF generator with Playwright/Puppeteer hooks; `docx` npm package for semantic Word document generation.
+- **Data Flow:**
+  - Candidate/Admin -> Next.js -> Express REST API (`/api/v1`) -> PostgreSQL / Private Object Storage / Job Queue.
+  - Candidate Settings & i18n -> Locale Negotiation (EN / BN) -> Dictionary Lookup -> Immediate Client-Side Layout Translation.
+  - Notification Engine -> Preferences Gate -> Reminder Date Scanning -> Candidate Email Dispatch (or Skipped by Preference).
+  - Advanced Admin Permissions -> Support-Access Approval Barrier -> Admin Verification -> Time-Bound Access or Rejection.
+  - Mock Interview Prep -> Grounding Context (CV skills + Job specs) -> Gemini Interview Adapter -> STAR Rubric Evaluation (5 dimensions) -> Ethical Non-Emotion Notice -> Session Practice Report.
+  - AI Writing & Cover Letters -> Daily Quota Gate -> PII Redaction -> Gemini Writing Adapter -> Hallucination Detection -> Candidate Acceptance.
+  - Job Processing -> PII Redaction -> Gemini Structured Extraction -> Deterministic Scorer -> Match Analysis Record in PostgreSQL.
+  - Application Pipeline -> Status Transitions -> Metrics Aggregation & Date Reminders -> Kanban Board / Table Views.
+
+## Folder and module map
+- Monorepo layout:
+  - `frontend/web`: Candidate Next.js App Router application:
+    - `app/layout.tsx`: Root layout with Design System metadata.
+    - `app/page.tsx`: Landing page with "Precision with momentum" theme and live demonstration flow.
+    - `app/profile/page.tsx`: Candidate career profile, verified skills, and autosave.
+    - `app/resumes/page.tsx`: ATS resume builder, version manager, paper surface preview, DOCX/PDF exports.
+    - `app/analyze/page.tsx`: Job description parser, PII redaction, 7-category deterministic match score, Evidence Map.
+    - `app/applications/page.tsx`: Interactive Kanban board, bulk table view, KPI metrics ribbon, keyboard-accessible status management, and new opportunity drawer.
+    - `app/writing/page.tsx`: AI Writing Studio with Bullet Improver (Original / Suggested / Why diff, Accept/Edit/Dismiss), Summary Tailor, Cover Letter Builder with verified CV claims, and live daily quota indicator.
+    - `app/interviews/page.tsx`: Mock Interview room with focus selection (Technical, Behavioral, HR, CV-based, Mixed), grounded questions, collapsible STAR guide side-sheet, practice timer, live word count, real-time 5-dimension rubric scoring, non-emotion disclaimer, and final practice plan report.
+    - `app/settings/page.tsx`: Candidate Settings page with English/Bangla (`en` / `bn`) live language switcher, notification & reminder preference toggles, and 24-hour temporary support-access grant/revoke manager.
+    - `app/login/page.tsx`: Candidate sign-in page with Argon2id auth connectivity, quick-fill demo credentials, and session persistence.
+    - `app/register/page.tsx`: Candidate registration page with 12–30 character password security meter and immediate onboarding redirect.
+  - `frontend/admin`: Admin Next.js application (`layout.tsx`, `page.tsx`, `globals.css` with metadata console layout).
+  - `backend/api`:
+    - `src/app.ts` & `src/server.ts`: Express application setup and server listener.
+    - `src/config/`: Typed environment validation (Zod).
+    - `src/core/`: Application error hierarchy (`AppError`, `ValidationError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`).
+    - `src/middleware/`: `requestIdMiddleware`, `errorHandler`, `requireAuth`, `requireRole`.
+    - `src/modules/auth/`: Argon2id password hashing with pepper, short JWTs, rotating refresh tokens with replay detection.
+    - `src/modules/profiles/`: Career profile and sub-entity CRUD with multi-tenant ownership filters.
+    - `src/modules/resumes/`:
+      - `resumes.repository.ts`: Resume CRUD, immutable snapshot versioning (`contentSnapshot`), duplication, and archival.
+      - `resumes.service.ts`: Business logic with profile pre-seeding.
+      - `resumes.controller.ts`: Endpoints for resume lifecycle, HTML preview, DOCX streaming, and PDF streaming.
+      - `resumes.routes.ts`: Routes mounted at `/api/v1/resumes`.
+    - `src/modules/exports/`:
+      - `templates/html-renderer.ts`: ATS-safe HTML rendering for `Foundation`, `Editorial`, and `Technical` templates with strict XSS escaping.
+      - `docx-export.service.ts`: Semantic DOCX builder using `docx` package.
+      - `pdf-export.service.ts`: Network-isolated PDF exporter with pluggable engine adapter.
+    - `src/modules/ai/`:
+      - `redaction.service.ts`: Pre-flight PII redaction (email, phone, URL/handle) for untrusted user inputs.
+      - `gemini.adapter.ts`: Official `@google/genai` integration with structured schema parsing, prompt-injection defense prompts, and rule-based fallback.
+      - `gemini-writing.adapter.ts`: Writing adapter with Google XYZ bullet framing, executive summary tuning, evidence-grounded cover letter builder, and hallucination guardrails.
+      - `gemini-interview.adapter.ts`: Interview adapter with grounded question generation, STAR rubric evaluation across 5 dimensions (relevance, clarity, structure, evidence, concision), deterministic fallbacks, and explicit non-emotion notice.
+    - `src/modules/jobs/`:
+      - `jobs.repository.ts`: Job description persistence with multi-tenant scoping.
+      - `jobs.service.ts`: Job creation, PII redaction, extraction triggering, and manual adjustments.
+      - `jobs.controller.ts`: Job CRUD endpoints.
+      - `jobs.routes.ts`: Routes mounted at `/api/v1/jobs`.
+    - `src/modules/matching/`:
+      - `matching.repository.ts`: Match analysis persistence and ownership verification across resumes and jobs.
+      - `matching.service.ts`: Deterministic matching pipeline, evidence map construction, and actionable recommendations.
+      - `matching.controller.ts`: Analysis run and retrieval endpoints.
+      - `matching.routes.ts`: Routes mounted at `/api/v1/analyses`.
+    - `src/modules/applications/`:
+      - `applications.repository.ts`: Job application CRUD, relations with resume version and match analysis, status counts, reminder queries, and in-memory test implementation.
+      - `applications.service.ts`: Cross-tenant ownership checks on linked resumes/analyses, status transitions, UTC/Dhaka date normalization, and analytics computations.
+      - `applications.controller.ts`: API endpoints for application lifecycle, filtering, pagination, metrics, reminders, and keyboard-accessible status changes.
+      - `applications.routes.ts`: Routes mounted at `/api/v1/applications`.
+    - `src/modules/writing/`:
+      - `writing.repository.ts`: Daily quota tracking (50 requests/day per candidate) with midnight UTC reset, cross-tenant resume/job retrieval, and admin failure & cost monitoring metrics.
+      - `writing.service.ts`: AI writing pipeline, quota enforcement (429 QUOTA_EXCEEDED), cross-tenant IDOR protection, and metric logging.
+      - `writing.controller.ts`: Endpoints for bullet improvement, summary tailoring, cover letter generation, quota inspection, and admin cost metrics.
+      - `writing.routes.ts`: Routes mounted at `/api/v1/writing`.
+    - `src/modules/interview/`:
+      - `interview.repository.ts`: Interview session and answer persistence, cross-tenant ownership verification on grounded resumes and jobs, Prisma and hermetic InMemory implementations.
+      - `interview.service.ts`: Session lifecycle management, answer submission, multi-tenant boundary checks, STAR evaluation, and summary practice plan report generation.
+      - `interview.controller.ts`: Endpoints for starting sessions, listing, getting session, submitting answers, and completing sessions.
+      - `interview.routes.ts`: Routes mounted at `/api/v1/interviews`.
+    - `src/modules/notifications/`:
+      - `notifications.repository.ts`: Notification and locale preferences persistence via AuditEvent/InMemory.
+      - `notifications.service.ts`: Preference CRUD and preference-aware reminder dispatch engine.
+      - `notifications.controller.ts`: Preference endpoints and manual/cron reminder dispatch trigger.
+      - `notifications.routes.ts`: Routes mounted at `/api/v1/notifications`.
+    - `src/modules/support/`:
+      - `support.repository.ts`: Time-bound support-access grant persistence and active grant queries.
+      - `support.service.ts`: Grant creation, revocation, and admin access verification.
+      - `support.controller.ts`: Candidate grant/revoke/status and admin verification endpoints.
+      - `support.routes.ts`: Routes mounted at `/api/v1/support`.
+    - `src/bootstrap/`: Idempotent admin provisioning CLI command.
+    - `prisma/schema.prisma`: 16 core entities with extended JSON fields for questions, summary reports, and feedback details.
+  - `backend/worker`: Dedicated background process for asynchronous AI and export job queue consumers.
+  - `packages/contracts`: API DTOs, Zod schemas, error envelopes, resume models, job models, matching contracts, application tracker models, AI writing models, interview prep models, i18n dictionaries, notification models, and support-access approval contracts (`common.ts`, `auth.ts`, `resume.ts`, `job.ts`, `matching.ts`, `application.ts`, `writing.ts`, `interview.ts`, `i18n.ts`, `notifications.ts`, `support.ts`).
+  - `packages/design-system`: UI tokens (Pine/Ink/Canvas palette, typography, radii, elevation, spacing) from DESIGN.md.
+  - `packages/config`: Shared TypeScript (`tsconfig.base.json`) and packaging configurations.
+  - `packages/scoring`: Pure, deterministic TypeScript matching engine (`engine.ts`, `dictionary.ts`, `types.ts`) with unit tests.
+
+## Domain models and business rules
+- **Core Entities (implemented in Prisma):**
+  - `User`, `CareerProfile`, `Education`, `Experience`, `Project`, `Skill`, `ProfileSkill`, `Resume`, `ResumeVersion`, `JobDescription`, `MatchAnalysis`, `JobApplication`, `InterviewSession`, `InterviewAnswer`, `RefreshSession`, `AuditEvent`.
+- **Key Invariants & Rules:**
+  - `ResumeVersion.contentSnapshot` is immutable JSONB. Modifying resume content creates a new incremental version without altering historical snapshots.
+  - Multi-tenant data isolation: every candidate query must enforce authenticated `userId`.
+  - Scores are computed strictly by deterministic TypeScript rules, never calculated directly by LLMs.
+  - Hallucination guardrail: AI suggestions cannot introduce unsubstantiated metrics, percentages, revenue figures, or tool proficiencies without attaching an explicit verification warning.
+  - AI Usage Quota: Candidate requests are metered (default 50 calls/day), resetting daily at 00:00 UTC.
+  - Evidence-bound cover letters: every claim generated is grounded in candidate's verified resume facts.
+  - Interview preparation ethical boundary: emotion analysis, psychological inference, confidence guessing, or personality profiling are strictly forbidden and excluded.
+  - Mandatory non-emotion notice attached to every interview feedback item: "Objective feedback based strictly on structure, factual relevance, and evidence. Emotion or personality inference is explicitly excluded."
+  - Advanced Admin Permissions & Support-Access: Admins and support agents cannot access candidate drafts without an active, unrevoked support access grant explicitly issued by the candidate.
+  - Notification Preferences: Reminder dispatch engine verifies candidate email preferences (`emailFollowUpReminders`, `emailInterviewReminders`) before issuing notifications.
+  - Internationalization: Native dictionary support for English (`en`) and Bangla (`bn`) across all core user flows.
+  - Cross-entity ownership: candidates cannot link resume versions, match analyses, or interview sessions belonging to other users.
+  - Completed interview sessions are locked against further answer submissions.
+  - Dates are stored in canonical UTC ISO 8601 with verified timezone fidelity (e.g. Asia/Dhaka +06:00).
+  - User password policy: 12–30 Unicode characters, Argon2id with unique salt + server pepper.
+  - Refresh tokens stored only as cryptographic hashes with token family tracking and replay detection.
+
+## APIs, integrations, and data
+- **API Base:** `/api/v1` with standard JSON error envelope, cursor pagination, and idempotency keys.
+- **Endpoints Implemented:**
+  - Health: `/live`, `/ready`, `/api/v1/health`
+  - Auth: `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/admin/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, `/api/v1/auth/revoke-all`, `/api/v1/auth/me`
+  - Profile: `/api/v1/profile` (GET, PATCH), `/api/v1/profile/educations` (POST, DELETE), `/api/v1/profile/experiences` (POST, DELETE), `/api/v1/profile/projects` (POST, DELETE)
+  - Resumes:
+    - `GET /api/v1/resumes`: List active resumes
+    - `POST /api/v1/resumes`: Create resume (optionally seeded from profile)
+    - `GET /api/v1/resumes/:id`: Get resume with version history
+    - `PATCH /api/v1/resumes/:id`: Update title/template or create new immutable snapshot version
+    - `POST /api/v1/resumes/:id/duplicate`: Duplicate resume with latest snapshot
+    - `DELETE /api/v1/resumes/:id`: Archive resume (soft-delete)
+    - `GET /api/v1/resumes/:id/preview`: Render ATS HTML preview with XSS escaping
+    - `POST /api/v1/resumes/:id/export/docx`: Stream DOCX binary (`.docx`)
+    - `POST /api/v1/resumes/:id/export/pdf`: Stream PDF binary (`.pdf`)
+  - Jobs:
+    - `POST /api/v1/jobs`: Create job description, redact PII, extract structured requirements
+    - `GET /api/v1/jobs/:id`: Fetch job description and extracted requirements
+    - `PATCH /api/v1/jobs/:id`: Candidate adjustment of extracted requirements
+  - Matching Analyses:
+    - `POST /api/v1/analyses`: Trigger deterministic match analysis between resume snapshot and job requirements
+    - `GET /api/v1/analyses/:id`: Retrieve match score, 7-category breakdown, evidence map, and 3 actionable recommendations
+  - Applications:
+    - `POST /api/v1/applications`: Create application, auto-set applied date, link resume version and match analysis with cross-tenant checks.
+    - `GET /api/v1/applications`: List applications with status filtering, keyword search, and pagination.
+    - `GET /api/v1/applications/metrics`: Analytics conversion rates (response, interview, offer rates, active count).
+    - `GET /api/v1/applications/reminders`: Retrieve applications with upcoming follow-up or interview dates within days window.
+    - `GET /api/v1/applications/:id`: Single application with resume and analysis relations.
+    - `PATCH /api/v1/applications/:id`: Update application fields.
+    - `PATCH /api/v1/applications/:id/status`: Dedicated keyboard-accessible status transition.
+    - `DELETE /api/v1/applications/:id`: Delete application.
+  - AI Writing & Cover Letters (Phase 5):
+    - `POST /api/v1/writing/improve-bullet`: Rewrite bullet using Google XYZ formula with Original / Suggested / Why diff.
+    - `POST /api/v1/writing/improve-summary`: Align executive summary to target role and verified skills.
+    - `POST /api/v1/writing/cover-letter`: Generate evidence-bound cover letter with grounded claims ledger.
+    - `GET /api/v1/writing/quota`: Check candidate's daily AI usage quota and reset timestamp.
+    - `GET /api/v1/writing/admin/metrics`: Admin-only failure, latency, token, and cost monitoring dashboard.
+  - Interview Preparation (Phase 6):
+    - `POST /api/v1/interviews`: Start mock interview session grounded in resume and job specifications.
+    - `GET /api/v1/interviews`: List candidate's interview sessions.
+    - `GET /api/v1/interviews/:id`: Retrieve single interview session with questions and answers.
+    - `POST /api/v1/interviews/:id/answers`: Submit text answer and receive real-time STAR structured rubric evaluation.
+    - `POST /api/v1/interviews/:id/complete`: Complete session, generate aggregate report and practice plan, and lock session.
+  - Notifications & Reminders (Phase 7):
+    - `GET /api/v1/notifications/preferences`: Get candidate notification and locale preferences.
+    - `PATCH /api/v1/notifications/preferences`: Update candidate notification and locale preferences.
+    - `POST /api/v1/notifications/dispatch-reminders`: Execute preference-aware reminder scan and email dispatch.
+  - Support-Access Approval (Phase 7):
+    - `POST /api/v1/support/grant`: Candidate grants temporary, time-bound support access (1-72 hours).
+    - `DELETE /api/v1/support/revoke`: Candidate immediately revokes active support access.
+    - `GET /api/v1/support/status`: Candidate checks support access status.
+    - `GET /api/v1/support/admin/grants`: Admin lists active candidate support grants.
+    - `GET /api/v1/support/admin/verify/:candidateId`: Admin verifies whether an active grant permits accessing candidate drafts.
+
+## Configuration and commands
+- **Environment Templates:**
+  - Root [.env.example](file:///g:/New%20Projects/careerpilot/.env.example) with sanitized placeholders for `DATABASE_URL`, `JWT_ACCESS_SECRET`, `PASSWORD_PEPPER_V1`, `ADMIN_BOOTSTRAP_EMAIL`, `ADMIN_BOOTSTRAP_PASSWORD`, `GEMINI_API_KEY`, and storage credentials.
+- **Commands:**
+  - `npm test`: Runs test suite across all packages (63 tests: API health, auth, IDOR, bootstrap, resumes, exports, job parsing, prompt injection defense, scoring engine, application tracker, AI writing, cover letters, hallucination guardrails, quota management, interview preparation with STAR rubric, notification preferences, reminder dispatch, support-access approval, and Bangla/English i18n parity).
+  - `npm run typecheck`: Runs strict `tsc --noEmit` across all apps and packages with 0 errors.
+  - `npm run bootstrap:admin --workspace=backend/api`: Executes idempotent admin bootstrap.
+  - `npm run prisma:generate --workspace=backend/api`: Generates Prisma client.
+  - `npm run dev:api`: Starts Express API dev server (`backend/api`).
+  - `npm run dev:web`: Starts candidate Next.js App Router dev server (`frontend/web`).
+  - `npm run dev:admin`: Starts admin Next.js console dev server (`frontend/admin`).
+
+## Known issues and decisions
+- **Decisions:**
+  - Support-Access Approval Gate: Strict privacy guarantee ensuring that administrative staff and support personnel cannot unilaterally view candidate data unless an explicit, time-limited grant is created by the candidate.
+  - Preference-Aware Notification Dispatch: Reminders evaluate candidate settings before simulated/actual delivery, ensuring candidates can selectively turn off follow-up emails while keeping interview alerts enabled.
+  - Comprehensive Bilingual i18n: Complete dictionary coverage in both English (`en`) and Bangla (`bn`) across all primary UI modules, accessible via `@careerpilot/contracts`.
+  - Non-Emotion Ethical Guardrail: Strictly enforces the exclusion of emotion or personality inference in interview feedback. All answer evaluations attach the non-emotion notice.
+  - 5-Dimension STAR Rubric: Evaluates relevance (1-5), clarity (1-5), structure (1-5), evidence (1-5), and concision (1-5), synthesizing an overall star rating (1-5).
+  - Hallucination guardrail regex: specifically handles symbols (`%`, `$`) and metric prefixes without invalid word boundaries on non-word characters.
+  - AI Quota Metering: 50 requests/day per candidate on free tier, resetting at 00:00 UTC. Returns HTTP 429 (`QUOTA_EXCEEDED`) upon exhaustion.
+  - Rule-based deterministic fallbacks: guarantees 100% service uptime even if Gemini API is unreachable, unconfigured, or rate-limited.
+  - Pipeline Analytics definition: Response rate counts applications moving past APPLIED into screening/assessment/interview/offer/rejected; Interview rate counts those reaching interview or offer; Offer rate counts offer stage.
+  - Timezone policy: Backend canonicalizes all incoming timestamps into UTC ISO 8601; Frontend displays in candidate's local time (e.g. Asia/Dhaka UTC+6).
+  - Cross-tenant IDOR protection verified across all modules (profiles, resumes, exports, jobs, analyses, applications, cover letters, interviews).
+
+## Change impact map
+- Created [packages/contracts/src/i18n.ts](file:///g:/New%20Projects/careerpilot/packages/contracts/src/i18n.ts), [notifications.ts](file:///g:/New%20Projects/careerpilot/packages/contracts/src/notifications.ts), [support.ts](file:///g:/New%20Projects/careerpilot/packages/contracts/src/support.ts).
+- Exported new modules in [packages/contracts/src/index.ts](file:///g:/New%20Projects/careerpilot/packages/contracts/src/index.ts) and rebuilt `@careerpilot/contracts`.
+- Implemented [backend/api/src/modules/notifications/](file:///g:/New%20Projects/careerpilot/backend/api/src/modules/notifications/) (repository, service, controller, routes).
+- Implemented [backend/api/src/modules/support/](file:///g:/New%20Projects/careerpilot/backend/api/src/modules/support/) (repository, service, controller, routes).
+- Mounted `/api/v1/notifications` and `/api/v1/support` in [backend/api/src/app.ts](file:///g:/New%20Projects/careerpilot/backend/api/src/app.ts).
+- Implemented [frontend/web/app/settings/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/settings/page.tsx) with English/Bangla language switcher, notification toggles, and support-access approval manager.
+- Added Phase 7 test suite in [backend/api/test/maturity.test.ts](file:///g:/New%20Projects/careerpilot/backend/api/test/maturity.test.ts).
+- Enhanced [backend/api/src/modules/auth/auth.repository.ts](file:///g:/New%20Projects/careerpilot/backend/api/src/modules/auth/auth.repository.ts) with active in-memory dev fallback and pre-seeded `candidate@careerpilot.dev` credentials when PostgreSQL port 5432 is offline.
+- Updated [backend/api/src/middleware/errorHandler.ts](file:///g:/New%20Projects/careerpilot/backend/api/src/middleware/errorHandler.ts) with descriptive `DATABASE_UNAVAILABLE` error messaging in development mode.
+- Enhanced [frontend/web/app/login/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/login/page.tsx) and [frontend/web/app/register/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/register/page.tsx) with 1-click instant demo access and automatic recovery into `/applications`.
+- Implemented [frontend/web/app/profile/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/profile/page.tsx) for candidate career profile, verified skills, and autosave.
+- Implemented [frontend/web/app/resumes/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/resumes/page.tsx) with ATS templates, version manager, paper surface preview, and DOCX/PDF export actions.
+- Implemented [frontend/web/app/analyze/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/analyze/page.tsx) with job description parsing, PII redaction, 7-category deterministic match score, and Evidence Map.
+- Updated persistent navigation rail in [frontend/web/app/applications/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/applications/page.tsx) to ensure full workspace route parity.
+
+## Recent changes
+- **Armor-BD Inspired Cinematic Movie-Style Animation Engine:**
+  - Researched design patterns on [armor-bd.com](https://www.armor-bd.com/) via browser inspection and combined them with `ui-ux-pro-max` (Aurora UI, Parallax, Motion-Driven).
+  - Integrated into [AnimatedBackground.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/AnimatedBackground.tsx) and [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css):
+    - **Cinematic Overhead Projector Beam (`.cinematic-projector-beam`)**: Volumetric breathing stage lighting cone radiating from top-center (`radial-gradient`, `@keyframes spotlightBreathe`).
+    - **Organic Film Grain Noise Layer (`.film-grain-layer`)**: SVG fractal noise filter overlay eliminating flat color banding and producing authentic cinematic camera texture.
+    - **Flowing Cyber Laser Streaks (`.laser-beam-h`, `.laser-beam-v`)**: Glowing laser beams traveling across the cyber matrix grid.
+    - **Interactive Sonar Radar Beacons (`.beacon-radar`)**: Concentric pulsing ripple rings (`@keyframes sonarPing`) on hero innovation badge and key telemetry.
+    - **3D Spatial Zero-Gravity Bobbing (`.float-3d-spatial`)**: Continuous 3D spatial rotation and vertical floating on key simulator cards.
+  - Full `@media (prefers-reduced-motion: reduce)` accessibility compliance.
+  - Verified 100% monorepo type safety (`npm run typecheck`) with 0 errors.
+- **UI/UX Pro Max Animated Aurora Ambient Background System:**
+  - Implemented GPU-accelerated animated ambient background in [AnimatedBackground.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/AnimatedBackground.tsx) and [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css) (`aurora-mesh-canvas`, `ambient-orb` with `orb-1`, `orb-2`, `orb-3`, and `subtle-animated-grid` with `gridDrift` animation).
+  - Floating luminous orbs slowly morph, pulse, and float over 16–24s loops in emerald, deep pine, and mint tones (`will-change: transform`, `filter: blur(95px)`).
+  - Integrated `AnimatedBackground` across the monorepo web app:
+    - [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx) (all 7 candidate workspace routes)
+    - [page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/page.tsx) (Main Landing Page)
+    - [login/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/login/page.tsx) and [register/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/register/page.tsx) (Authentication flow)
+- **Comprehensive Mobile Responsiveness & Viewport Optimization:**
+  - Implemented responsive mobile layout architecture across [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css), [page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/page.tsx), [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx), and [AnimatedBackground.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/AnimatedBackground.tsx).
+  - Main Landing Page: Added responsive mobile navigation drawer with hamburger toggle (`Menu`/`X`), fluid font typography (`clamp(2rem, 7vw, 4.4rem)`), touch-friendly padding (`clamp(1.25rem, 3.5vw, 2.5rem)`), horizontal table swipe hint, and auto-fitting grid templates (`minmax(min(100%, 280px), 1fr)`).
+  - Candidate Workspace Shell: Converted static sidebar into an off-canvas slide-in mobile drawer (`.workspace-sidebar-open`) with touch backdrop, mobile hamburger header trigger (`.workspace-mobile-toggle`), compact icon-only command trigger, and responsive content padding (`.workspace-main-content`).
+  - 3D Animated Background: Added touch gesture filtering (`e.pointerType === 'touch'`) to prevent mobile scrolling jitter, hid desktop-only cursor aura, and scaled 3D polyhedra down to 60% on mobile screens (`.bg-3d-crystal`, `.bg-3d-gyro`, `.bg-3d-diamond`, `.bg-3d-shield`) to preserve content legibility.
+  - Viewport Protection: Added `overflow-x: hidden` and `max-width: 100vw` rules to prevent any unwanted horizontal viewport scrolling on mobile devices.
+  - Verified 100% type safety (`npm run typecheck`) and 63/63 passing tests (`npm test`).
+- **Framer Motion 3D Aesthetic Ambient Engine & Magic Motion ([AnimatedBackground.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/AnimatedBackground.tsx)):**
+  - Integrated `framer-motion` v14 to deliver a movie-like 3D background with aesthetic spatial depth and interactive magic motion.
+  - Interactive multi-layer 3D camera parallax using `useMotionValue`, `useSpring({ damping: 28, stiffness: 100, mass: 0.8 })`, and `useTransform` across background, midground, and foreground depth planes with responsive `rotateX`, `rotateY`, and `translateZ` physics.
+  - Interactive magic cursor spotlight aura tracking mouse movements with smooth spring lag, illuminating the ambient mesh like a celestial glow.
+  - 3D geometric floating polyhedral crystal prisms with wireframes, glowing vertex nodes, and continuous 3D multi-axis rotation (`rotateX`, `rotateY`, `rotateZ`) and levitation.
+  - 3D celestial gyroscope / orbital astrolabe rings rotating along divergent axes with a pulsing emerald crystal core.
+  - Floating 3D diamond and hexagonal shield nodes floating with rhythmic bobbing physics.
+  - 20-particle floating stardust constellation system with depth-scaled parallax speeds, dynamic twinkle (`opacity`, `scale`), and SVG vector link lines.
+  - Maintained volumetric projector beam, subtle film grain noise, drifting cyber grid, and edge camera vignette.
+  - Full `useReducedMotion()` accessibility fallback to pause rotations/parallax on demand.
+  - Verified 100% type safety (`npm run typecheck`) and 63/63 passing tests (`npm test`).
+- **UI/UX Pro Max Aesthetic Redesign & User Experience Upgrade:**
+  - Integrated `ui-ux-pro-max` design recommendations: Bento Grid cards (`.bento-card`), subtle ambient surface lighting, and custom dark-emerald webkit scrollbar.
+  - Built an interactive **Spotlight Command Palette (`Ctrl+K` / `⌘K`)** in [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx) with full keyboard navigation (Up/Down/Enter/Esc), fast fuzzy category searching across 9 tools/actions/routes, and dark frosted-glass overlay.
+  - Implemented the **Career Thread Milestone Stepper** (from `DESIGN.md` signature ideas) across the workspace header, linking Candidate Profile ➔ ATS Resumes ➔ Match Analyzer ➔ Applications CRM ➔ AI Writing Studio ➔ Mock Interviews with active glowing emerald path nodes.
+  - Added live Dhaka (UTC+6) candidate time display, mobile responsive drawer toggle, and accessible WCAG AA focus rings (`*:focus-visible`) in [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css).
+  - Verified 100% type safety (`npm run typecheck`) and 63/63 passing tests (`npm test`) across monorepo.
+- **Installed UI/UX Pro Max Skill Suite (`.agents/skills/`):**
+  - Integrated `ui-ux-pro-max` from [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) into workspace skills (`.agents/skills/ui-ux-pro-max`).
+  - Installed 7 sub-skills: `ui-ux-pro-max`, `banner-design`, `brand`, `design`, `design-system`, `slides`, and `ui-styling`.
+  - Configured local Python BM25 search engine and design system generator (`python .agents/skills/ui-ux-pro-max/scripts/search.py`) with 79 UI styles, 192 product reasoning profiles, 74 font pairings, 119 UX guidelines, and stack-specific rules. Verified standalone CLI execution on Windows without external dependencies.
+- **Platform-Wide Modern Animation & Micro-Interaction System Completed:**
+  - Implemented comprehensive, performance-friendly CSS keyframes, stagger utilities, and interaction classes in [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css) (`animate-slide-up`, `animate-slide-down`, `animate-slide-in-left`, `animate-scale-in`, `animate-blur-in`, `animate-fade-in`, `stagger-1` through `stagger-8`, `hover-lift`, `hover-glow`, `hover-scale`, `hover-brighten`, `press-effect`, `btn-emerald-glow`, `glass-panel-hover`).
+  - Created [useScrollReveal.ts](file:///g:/New%20Projects/careerpilot/frontend/web/app/hooks/useScrollReveal.ts) hook leveraging high-performance `IntersectionObserver` with automatic disconnect to animate viewport entrance for `.scroll-reveal`, `.scroll-reveal-left`, and `.scroll-reveal-scale`.
+  - Upgraded Main Landing Page ([frontend/web/app/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/page.tsx)):
+    - Header: `animate-slide-down` sticky blur nav with `hover-scale` logo and `hover-brighten` links.
+    - Hero: `animate-fade-in` innovation pill with `animate-breathe` glowing dot, `animate-slide-up stagger-1` gradient shimmer headline, `animate-slide-up stagger-2` subtitle, `animate-slide-up stagger-3` CTA buttons with `hover-lift` and `btn-emerald-glow`, and `animate-scale-in stagger-4` metrics ribbon with hover scaling.
+    - Interactive 4-Pillar Demo Simulator: `scroll-reveal` header, `scroll-reveal` tab buttons with Lucide icons (`Target, Zap, Mic, FileText`), `hover-lift` target role switcher, and `scroll-reveal-scale glass-panel hover-glow` simulator card surface with `animate-fade-in` active tabs.
+    - Features Grid: `scroll-reveal` section title, 6 feature cards with `scroll-reveal stagger-1...stagger-6`, `glass-panel-hover hover-lift hover-glow` and Lucide icons (`Scale, ShieldCheck, Zap, Mic, Layers, Lock`).
+    - Comparison Matrix: `scroll-reveal` header, `scroll-reveal-scale glass-panel hover-glow` table with interactive row hover highlighting.
+    - FAQ Accordion: `scroll-reveal` items with `hover-glow` borders and smooth 180° rotating `ChevronDown` icons.
+    - Final Call to Action & Footer: `scroll-reveal-scale hover-glow` banner with `btn-emerald-glow hover-lift` action buttons and `scroll-reveal` footer.
+  - Upgraded Candidate Workspace Pages:
+    - [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx): `animate-slide-in-left` sidebar, staggered `animate-fade-in` nav links, `animate-breathe` live quota badge, and `animate-slide-down` top header.
+    - [Applications Kanban CRM](file:///g:/New%20Projects/careerpilot/frontend/web/app/applications/page.tsx): Staggered `animate-slide-up` KPI cards with count animation and `hover-glow`, `animate-scale-in hover-glow` Kanban cards, and `animate-overlay`/`animate-modal` opportunity drawer.
+    - [Deterministic Match Analyzer](file:///g:/New%20Projects/careerpilot/frontend/web/app/analyze/page.tsx): `animate-slide-in-left` job specs form with `btn-emerald-glow hover-lift` run button, `animate-slide-up hover-glow hover-lift` score card, `hover-glow` 7-category breakdown with smooth 0.8s progress bar animations, and `hover-lift` evidence map items.
+    - [ATS Resume Builder & Preview](file:///g:/New%20Projects/careerpilot/frontend/web/app/resumes/page.tsx): `animate-slide-in-left` controls, `hover-lift hover-glow` resume selectors and template switchers, and `animate-slide-up hover-glow` authentic paper preview with `hover-lift` sheet interaction.
+    - [STAR Mock Interview Studio](file:///g:/New%20Projects/careerpilot/frontend/web/app/interviews/page.tsx): `animate-slide-up hover-glow` focus ribbon with `press-effect hover-lift` focus pills, `animate-slide-up stagger-1 hover-glow` question card, `animate-slide-up stagger-2 hover-glow` STAR answer textarea with `btn-emerald-glow hover-lift` submission, and `animate-slide-up hover-glow` real-time 5-dimension rubric score cards.
+    - [AI Writing Studio](file:///g:/New%20Projects/careerpilot/frontend/web/app/writing/page.tsx): `press-effect hover-lift` tab buttons, `animate-expand-in` tab containers, and `hover-glow hover-lift` suggestion cards.
+    - [Candidate Settings](file:///g:/New%20Projects/careerpilot/frontend/web/app/settings/page.tsx): Cascading staggered `animate-slide-up stagger-1/2/3` cards across bilingual language selection, notification preferences, and zero-trust support access grant manager.
+    - [Auth Flow](file:///g:/New%20Projects/careerpilot/frontend/web/app/login/page.tsx) & [Register](file:///g:/New%20Projects/careerpilot/frontend/web/app/register/page.tsx): `animate-slide-down` header and `animate-blur-in stagger-2` authentication cards.
+  - Verified 100% type safety with zero errors (`tsc --noEmit`).
+- **Lucide Icons Integration Across All Interfaces:** Installed official `lucide-react` across frontend workspaces (`frontend/web`, `frontend/admin`) and replaced legacy unicode/emoji characters with clean, crisp SVG iconography:
+  - [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx): `Compass`, `User`, `FileText`, `Target`, `Kanban`, `PenTool`, `Mic`, `Settings`, `Zap`, `ShieldCheck`.
+  - [Applications CRM](file:///g:/New%20Projects/careerpilot/frontend/web/app/applications/page.tsx): `Briefcase`, `Activity`, `TrendingUp`, `Video`, `Award`, `Plus`, `Search`, `MapPin`, `DollarSign`, `Calendar`, `Sparkles`, `X`.
+  - [Profile](file:///g:/New%20Projects/careerpilot/frontend/web/app/profile/page.tsx): `User`, `Code2`, `Briefcase`, `GraduationCap`, `CheckCircle2`, `Clock`, `Plus`.
+  - [Resumes](file:///g:/New%20Projects/careerpilot/frontend/web/app/resumes/page.tsx): `Download`, `FileText`, `Copy`, `Layers`.
+  - [Analyzer](file:///g:/New%20Projects/careerpilot/frontend/web/app/analyze/page.tsx): `Sparkles`, `CheckCircle2`, `AlertTriangle`.
+  - [Writing](file:///g:/New%20Projects/careerpilot/frontend/web/app/writing/page.tsx): `Sparkles`, `PenTool`, `FileText`, `Zap`, `AlertTriangle`.
+  - [Interviews](file:///g:/New%20Projects/careerpilot/frontend/web/app/interviews/page.tsx): `Timer`, `Sparkles`, `ArrowRight`.
+  - [Settings](file:///g:/New%20Projects/careerpilot/frontend/web/app/settings/page.tsx): `Globe`, `Bell`, `Lock`.
+  - [Login & Register](file:///g:/New%20Projects/careerpilot/frontend/web/app/login/page.tsx): `Compass`, `Mail`, `Lock`, `Eye`, `EyeOff`, `Zap`, `ArrowRight`, `ShieldCheck`.
+  - [Admin Console](file:///g:/New%20Projects/careerpilot/frontend/admin/app/page.tsx): `Activity`, `ShieldCheck`, `Scale`, `Server`, `Zap`, `RefreshCw`, `Lock`, `ScrollText`, `Database`.
+  - Verified with 0 TypeScript errors (`npm run typecheck`) and 63/63 passing unit/integration tests (`npm test`).
+- **Full Workspace, Dashboard & Console Luxury Redesign:** Transformed all candidate workspace and administrative interfaces to a unified, luxury dark-emerald design language (`#080D0B` canvas, `#0C1210` surface, glowing emerald `#10B981` accents, and Google font `Plus Jakarta Sans`).
+  - Created reusable [frontend/web/app/components/WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx) with active route indicator, responsive sidebar, candidate status badge (Asia/Dhaka time), and real-time daily AI quota tracker.
+  - Upgraded Candidate CRM & Dashboard ([frontend/web/app/applications/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/applications/page.tsx)) with 5 glowing KPI ribbon cards, dark Kanban status columns, match score badges, and glassmorphic Add Opportunity modal.
+  - Upgraded [frontend/web/app/profile/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/profile/page.tsx), [frontend/web/app/resumes/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/resumes/page.tsx), [frontend/web/app/analyze/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/analyze/page.tsx), [frontend/web/app/writing/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/writing/page.tsx), [frontend/web/app/interviews/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/interviews/page.tsx), and [frontend/web/app/settings/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/settings/page.tsx).
+  - Modernized Authentication Flow ([frontend/web/app/login/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/login/page.tsx) and [frontend/web/app/register/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/register/page.tsx)) with glassmorphic cards, live password length validation, and 1-click instant demo candidate access.
+  - Overhauled Admin Console ([frontend/admin/app/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/admin/app/page.tsx) & [globals.css](file:///g:/New%20Projects/careerpilot/frontend/admin/app/globals.css)) into a dark-emerald mission control center featuring live cluster telemetry, BullMQ worker monitor, zero-trust support access authorization boundary, 7-pillar deterministic scoring weights, and an immutable security audit log stream.
+  - Verified 100% type safety (`npm run typecheck`) and 100% test suite pass rate (63 tests passing) across all monorepo workspaces.
+- **Visual Design & Landing Page Overhaul:** Elevated the web frontend from a plain minimal interface to a luxury modern dark-emerald glassmorphic experience ([frontend/web/app/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/page.tsx), [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css), [layout.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/layout.tsx)). Added high-impact typography with Plus Jakarta Sans, interactive 4-pillar capability simulator (Deterministic Matcher with 7 categories, Google XYZ Bullet Transformer with before/after diffs, STAR Mock Interview Evaluator, and ATS-Proof Document Studio), live sample role switcher (Fullstack, Frontend, AI Cloud), comparison matrix against generic AI tools, and an interactive FAQ accordion. Strict typecheck passed across all packages with 0 errors.
+- **Full Project Architecture Reorganization & Cleanup:** Completely deleted the legacy `apps/` directory and all residual build caches. Cleaned up stale `*.tsbuildinfo` files. Confirmed zero dead code, zero unused locals/parameters across all modules via strict typecheck, and verified all 63 unit and integration tests passing cleanly.
+- **Full Project Architecture Reorganization (Frontend/Backend Separation):** Successfully reorganized the entire repository codebase into dedicated top-level `frontend/` (`frontend/web`, `frontend/admin`) and `backend/` (`backend/api`, `backend/worker`) structures. Updated root `package.json` workspaces (`["frontend/*", "backend/*", "packages/*"]`) and dev scripts (`dev:api`, `dev:web`, `dev:admin`). Synchronized dependencies, all 63 unit and integration tests passed, and strict typecheck verified with 0 errors. Updated [ARCHITECTURE.md](file:///g:/New%20Projects/careerpilot/ARCHITECTURE.md), [README.md](file:///g:/New%20Projects/careerpilot/README.md), and [Brain.md](file:///g:/New%20Projects/careerpilot/Brain.md).

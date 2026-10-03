@@ -1,0 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --color-canvas: #080D0B;
+  --color-surface: #0C1210;
+  --color-card: #111A16;
+  --color-card-border: rgba(52, 211, 153, 0.15);
+  --color-primary: #10B981;
+  --color-primary-light: #34D399;
+  --color-primary-dark: #059669;
+  --color-text-main: #FFFFFF;
+  --color-text-muted: #94A3B8;
+  --color-text-subtle: #64748B;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  color: var(--color-text-main);
+  background-color: var(--color-canvas);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding: 0;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}

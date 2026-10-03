@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables and secrets (Strict - Never commit real secrets)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+
+# Next.js build output
+.next/
+out/
+
+# Production & Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Prisma generated artifacts & local sqlite/db if any
+*.db
+*.sqlite
+*.sqlite3
+
+# Playwright & Puppeteer temporary output
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# Temp files
+tmp/
+temp/
+scratch/
+
+
+.agents/
+

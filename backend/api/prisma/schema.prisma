@@ -1,0 +1,315 @@
+// CareerPilot — Core Database Schema
+// Fully mapped from ARCHITECTURE.md §7
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CANDIDATE
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ApplicationStatus {
+  SAVED
+  APPLIED
+  SCREENING
+  ASSESSMENT
+  INTERVIEW
+  OFFER
+  REJECTED
+  WITHDRAWN
+}
+
+enum InterviewType {
+  HR
+  BEHAVIORAL
+  TECHNICAL
+  CV_BASED
+  MIXED
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  passwordHash    String
+  fullName        String
+  role            Role             @default(CANDIDATE)
+  isEmailVerified Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+
+  profile         CareerProfile?
+  resumes         Resume[]
+  jobDescriptions JobDescription[]
+  applications    JobApplication[]
+  interviews      InterviewSession[]
+  refreshSessions RefreshSession[]
+  auditEvents     AuditEvent[]
+
+  @@index([email])
+}
+
+model CareerProfile {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline       String?
+  summary        String?
+  targetRoles    String[]
+  phoneNumber    String?
+  location       String?
+  portfolioUrl   String?
+  githubUrl      String?
+  linkedinUrl    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  educations     Education[]
+  experiences    Experience[]
+  projects       Project[]
+  profileSkills  ProfileSkill[]
+}
+
+model Education {
+  id              String        @id @default(uuid())
+  profileId       String
+  profile         CareerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institution     String
+  degree          String
+  fieldOfStudy    String
+  startDate       DateTime
+  endDate         DateTime?
+  isCurrent       Boolean       @default(false)
+  grade           String?
+  description     String?
+  displayOrder    Int           @default(0)
+
+  @@index([profileId])
+}
+
+model Experience {
+  id              String        @id @default(uuid())
+  profileId       String
+  profile         CareerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company         String
+  role            String
+  location        String?
+  startDate       DateTime
+  endDate         DateTime?
+  isCurrent       Boolean       @default(false)
+  description     String?
+  highlights      String[]
+  displayOrder    Int           @default(0)
+
+  @@index([profileId])
+}
+
+model Project {
+  id              String        @id @default(uuid())
+  profileId       String
+  profile         CareerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  url             String?
+  technologies    String[]
+  displayOrder    Int           @default(0)
+
+  @@index([profileId])
+}
+
+model Skill {
+  id              String         @id @default(uuid())
+  name            String         @unique
+  category        String?
+  aliases         String[]
+  profileSkills   ProfileSkill[]
+
+  @@index([name])
+}
+
+model ProfileSkill {
+  id              String        @id @default(uuid())
+  profileId       String
+  profile         CareerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  skillId         String
+  skill           Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  proficiency     String?
+  yearsOfExp      Int?
+
+  @@unique([profileId, skillId])
+}
+
+model Resume {
+  id              String          @id @default(uuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  templateName    String          @default("Foundation")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  versions        ResumeVersion[]
+
+  @@index([userId])
+}
+
+model ResumeVersion {
+  id              String           @id @default(uuid())
+  resumeId        String
+  resume          Resume           @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  versionNumber   Int
+  // contentSnapshot is immutable JSONB containing full structured resume evidence at this point in time
+  contentSnapshot Json
+  summaryDiff     String?
+  createdAt       DateTime         @default(now())
+
+  analyses        MatchAnalysis[]
+  applications    JobApplication[]
+
+  @@unique([resumeId, versionNumber])
+  @@index([resumeId])
+}
+
+model JobDescription {
+  id              String          @id @default(uuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  company         String?
+  rawContent      String
+  // Structured extracted facts verified by candidate before analysis
+  extractedData   Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  analyses        MatchAnalysis[]
+
+  @@index([userId])
+}
+
+model MatchAnalysis {
+  id                   String           @id @default(uuid())
+  resumeVersionId      String
+  resumeVersion        ResumeVersion    @relation(fields: [resumeVersionId], references: [id], onDelete: Cascade)
+  jobDescriptionId     String
+  jobDescription       JobDescription   @relation(fields: [jobDescriptionId], references: [id], onDelete: Cascade)
+  status               AnalysisStatus   @default(PENDING)
+  score                Int?
+  categoriesBreakdown  Json?
+  matchedEvidence      Json?
+  missingRequirements  Json?
+  scoringVersion       String
+  aiPromptVersion      String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  applications         JobApplication[]
+
+  @@index([resumeVersionId])
+  @@index([jobDescriptionId])
+}
+
+model JobApplication {
+  id              String            @id @default(uuid())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company         String
+  role            String
+  jobUrl          String?
+  status          ApplicationStatus @default(SAVED)
+  salaryNote      String?
+  location        String?
+  appliedDate     DateTime?
+  followUpDate    DateTime?
+  interviewDate   DateTime?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  resumeVersionId String?
+  resumeVersion   ResumeVersion?    @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
+  matchAnalysisId String?
+  matchAnalysis   MatchAnalysis?    @relation(fields: [matchAnalysisId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+}
+
+model InterviewSession {
+  id              String            @id @default(uuid())
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetRole      String
+  interviewType   InterviewType     @default(MIXED)
+  questions       Json?
+  summaryReport   Json?
+  createdAt       DateTime          @default(now())
+  completedAt     DateTime?
+
+  answers         InterviewAnswer[]
+
+  @@index([userId])
+}
+
+model InterviewAnswer {
+  id              String           @id @default(uuid())
+  sessionId       String
+  session         InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  questionText    String
+  userAnswerText  String
+  feedbackSummary String?
+  feedbackDetails Json?
+  starRating      Int?
+  createdAt       DateTime         @default(now())
+
+  @@index([sessionId])
+}
+
+model RefreshSession {
+  id              String           @id @default(uuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenFamilyId   String           @default(uuid())
+  // High-entropy token is hashed with Argon2/SHA-256 before storing; plaintext is never persisted
+  tokenHash       String
+  expiresAt       DateTime
+  isRevoked       Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  lastUsedAt      DateTime         @default(now())
+
+  @@index([userId])
+  @@index([tokenFamilyId])
+  @@index([tokenHash])
+}
+
+model AuditEvent {
+  id              String           @id @default(uuid())
+  userId          String?
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action          String
+  targetType      String
+  targetId        String?
+  metadata        Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime         @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
