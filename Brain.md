@@ -239,7 +239,11 @@
   - Integrated `AnimatedBackground` across the monorepo web app:
     - [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx) (all 7 candidate workspace routes)
     - [page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/page.tsx) (Main Landing Page)
-    - [login/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/login/page.tsx) and [register/page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/register/page.tsx) (Authentication flow)
+- **Git Repository Initialized & Pushed to GitHub:**
+  - Initialized Git tracking on `main` branch with clean `.gitignore` safeguarding secrets and dependencies.
+  - Successfully committed 134 files (full-stack monorepo with `frontend/`, `backend/`, and `packages/`).
+  - Added remote `origin` pointing to `https://github.com/JoyTarafder/CareerPilot.git`.
+  - Pushed initial commit to `origin/main` with upstream tracking (`git push -u origin main`).
 - **Comprehensive Mobile Responsiveness & Viewport Optimization:**
   - Implemented responsive mobile layout architecture across [globals.css](file:///g:/New%20Projects/careerpilot/frontend/web/app/globals.css), [page.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/page.tsx), [WorkspaceShell.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/WorkspaceShell.tsx), and [AnimatedBackground.tsx](file:///g:/New%20Projects/careerpilot/frontend/web/app/components/AnimatedBackground.tsx).
   - Main Landing Page: Added responsive mobile navigation drawer with hamburger toggle (`Menu`/`X`), fluid font typography (`clamp(2rem, 7vw, 4.4rem)`), touch-friendly padding (`clamp(1.25rem, 3.5vw, 2.5rem)`), horizontal table swipe hint, and auto-fitting grid templates (`minmax(min(100%, 280px), 1fr)`).
